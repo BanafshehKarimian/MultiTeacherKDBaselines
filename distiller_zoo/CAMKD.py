@@ -27,7 +27,8 @@ class CAMKD(nn.Module):
             tmp_loss_st = self.crit_mse(mid_feat_s, mid_feat_t).reshape(bsz, -1).mean(-1)
             loss_st.append(tmp_loss_st)
         loss_st = torch.stack(loss_st, dim=0)
-        loss = torch.mul(weight, loss_st).sum()
+        loss = weight.view(2, 1) * loss_st
+        #loss = torch.mul(weight, loss_st).sum()
         # loss = torch.mul(attention, loss_st).sum()
         loss /= (1.0*bsz*num_teacher)
 

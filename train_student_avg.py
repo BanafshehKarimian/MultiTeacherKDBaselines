@@ -295,11 +295,11 @@ def main_worker(gpu, ngpus_per_node, args):
     
     ################### load data ###################
     if args.dataset == 'cifar100':
-        train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
+        train_loader, val_loader, test_loader = get_cifar100_dataloaders(data_folder=args.data,
                                                         batch_size=args.batch_size,
                                                         num_workers=args.workers)
     elif args.dataset == 'pcam':
-        train_loader, val_loader = get_pcam_dataloaders(args.data, batch_size=args.batch_size, num_workers=args.workers)
+        train_loader, val_loader, test_loader = get_pcam_dataloaders(args.data, batch_size=args.batch_size, num_workers=args.workers)
     ################### train model ###################
     best_acc = 0.  # best test accuracy
     
@@ -340,7 +340,7 @@ def main_worker(gpu, ngpus_per_node, args):
         checkpoint = torch.load(os.path.join(args.checkpoint_dir, args.arch + '_best.pth.tar'),
                                     map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint['model'])
-        top1_acc = test(epoch, model, device, val_loader, criterion_ce, args)
+        top1_acc = test(epoch, model, device, test_loader, criterion_ce, args)
         args.logger.info('Test top-1 best_accuracy: {}'.format(top1_acc))
         args.logger.info('load pre-trained weights from: {}'.format(os.path.join(args.checkpoint_dir,  args.arch + '_best.pth.tar')))
 

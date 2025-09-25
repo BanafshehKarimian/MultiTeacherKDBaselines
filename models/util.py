@@ -139,20 +139,20 @@ class CalWeight(nn.Module):
         for i in range(len(feat_t_list)):
             t_channel = feat_t_list[i].shape[1]
             print('t_channel', t_channel)
-            setattr(self, 'embed'+str(i), Embed(s_channel, t_channel, self.opt.factor, self.opt.convs))
+            setattr(self, 'embed'+str(i), LinearEmbed(s_channel, t_channel))# change to linear
 
 
     def forward(self, feat_s, feat_t_list, model_t_list=None):
         tmp_model = [model_t.distill_seq() for model_t in model_t_list]
         trans_feat_s_list = []
         output_feat_t_list = []
-        s_H = feat_s.shape[2]
+        '''s_H = feat_s.shape[2]'''
         for i, mid_feat_t in enumerate(feat_t_list):
-            t_H = mid_feat_t.shape[2]
+            '''t_H = mid_feat_t.shape[2]
             if s_H >= t_H:
                 feat_s = F.adaptive_avg_pool2d(feat_s, (t_H, t_H))
             else:
-                feat_s = F.interpolate(feat_s, size=(t_H, t_H), mode='bilinear')
+                feat_s = F.interpolate(feat_s, size=(t_H, t_H), mode='bilinear')'''
             trans_feat_s = getattr(self, 'embed'+str(i))(feat_s)
             trans_feat_s_list.append(trans_feat_s)
             output_feat_t = tmp_model[i][-1](trans_feat_s)
