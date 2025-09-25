@@ -147,11 +147,11 @@ class RegNet(nn.Module):
 
         if is_feat:
             if preact:
-                return [f0, f1_pre, f2_pre, f3_pre, f4], x
+                return [f0, f1_pre, f2_pre, f4, f4], x
             elif is_lr_adaptive:
-                return [f0, f1, f2, f3, pool, f4], x
+                return [f0, f1, f2, f3, f4, f4], x
             else:
-                return [f0, f1, f2, f3, f4], x
+                return [f0, f1, f2, f4, f4], x
         else:
             return x
 

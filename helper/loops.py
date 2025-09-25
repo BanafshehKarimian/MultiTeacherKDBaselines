@@ -31,7 +31,7 @@ def train_vanilla(epoch, train_loader, model, criterion, optimizer, opt):
         if opt.dataset == 'imagenet':
             adjust_learning_rate(optimizer, epoch, idx, len(train_loader), opt.learning_rate)
         if opt.dali is None:
-            input, target = batch_data
+            input, target, raw_inputs = batch_data
         else:
             input, target = batch_data[0]['data'], batch_data[0]['label'].squeeze().long()
 
@@ -49,7 +49,7 @@ def train_vanilla(epoch, train_loader, model, criterion, optimizer, opt):
         losses.update(loss.item(), input.size(0))
 
         # ===================Metrics=====================
-        metrics = accuracy(output, target, topk=(1, 5))
+        metrics = accuracy(output, target, topk=(1, 1))
         top1.update(metrics[0].item(), input.size(0))
         top5.update(metrics[1].item(), input.size(0))
         batch_time.update(time.time() - end)
@@ -109,7 +109,7 @@ def validate(val_loader, model, criterion, opt):
             losses.update(loss.item(), input.size(0))
 
             # measure accuracy and record loss
-            metrics = accuracy(output, target, topk=(1, 5))
+            metrics = accuracy(output, target, topk=(1, 1))
             top1.update(metrics[0].item(), input.size(0))
             top5.update(metrics[1].item(), input.size(0))
 

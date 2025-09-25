@@ -1,10 +1,12 @@
 from __future__ import print_function
-
+import torch
 import os
 import numpy as np
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from PIL import Image
+from transformers import AutoImageProcessor, AutoModel
+from torch.utils.data import Dataset
 
 """
 mean = {
@@ -15,7 +17,24 @@ std = {
     'cifar100': (0.2675, 0.2565, 0.2761),
 }
 """
+class CustomDataset(Dataset):
+    def __init__(self, base_dataset, transform=None):
+        self.base_dataset = base_dataset
+        self.transform = transform
 
+    def __len__(self):
+        return len(self.base_dataset)
+
+    def __getitem__(self, idx):
+        raw_img, label = self.base_dataset[idx]
+
+        # Preserve original image
+        raw_img_copy = raw_img.copy() if isinstance(raw_img, Image.Image) else raw_img
+
+        # Apply transform
+        transformed_img = self.transform(raw_img) if self.transform else raw_img
+
+        return transformed_img, label, raw_img_copy
 
 def get_data_folder():
     """
@@ -69,6 +88,9 @@ class CIFAR100Instance(CIFAR100BackCompat):
 
         return img, target, index
 
+def custom_collate(batch):
+    transformed, labels, raw_imgs = zip(*batch)
+    return torch.stack(transformed), torch.tensor(labels), raw_imgs  
 
 def get_cifar100_dataloaders(data_folder, batch_size=128, num_workers=8, is_instance=False):
     """
@@ -90,17 +112,18 @@ def get_cifar100_dataloaders(data_folder, batch_size=128, num_workers=8, is_inst
         train_set = CIFAR100Instance(root=data_folder,
                                      download=True,
                                      train=True,
-                                     transform=train_transform)
+                                     transform=None)
         n_data = len(train_set)
     else:
         train_set = datasets.CIFAR100(root=data_folder,
                                       download=True,
                                       train=True,
-                                      transform=train_transform)
+                                      transform=None)
+    train_set = CustomDataset(train_set, transform=train_transform)
     train_loader = DataLoader(train_set,
                               batch_size=batch_size,
                               shuffle=True,
-                              num_workers=num_workers)
+                              num_workers=num_workers, collate_fn=custom_collate)
 
     test_set = datasets.CIFAR100(root=data_folder,
                                  download=True,

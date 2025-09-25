@@ -26,9 +26,11 @@ class PolicyTrans(nn.Module):
         self.teacher_num = teacher_num
         
         self.sim_trans = nn.ModuleList([])
-        all_input_size = 0
+        all_input_size = 0 #++ input embedding size
         for idx in range(teacher_num):
             all_input_size = all_input_size + input_size[idx]
+        #if True:
+        #    all_input_size += 768
         
         self.steam = nn.Sequential(
                 nn.Linear(all_input_size, 128, bias=False),
@@ -46,7 +48,7 @@ class PolicyTrans(nn.Module):
             self.feature_weight_factor = torch.nn.Parameter(torch.tensor([1., 1., 1.]), requires_grad=True)
 
     def forward(self, agent_state):
-        teacher_infos, t_ces, t_s_logit_div, t_s_feat_div = agent_state
+        teacher_infos, t_ces, t_s_logit_div, t_s_feat_div = agent_state #++ input embedding
 
         weight_loss_t = (1. - F.softmax(t_ces, dim=1)) / (self.teacher_num - 1)
         weight_loss_t_s_logit_div = F.softmax(t_s_logit_div, dim=1)

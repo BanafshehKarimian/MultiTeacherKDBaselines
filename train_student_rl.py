@@ -1,3 +1,4 @@
+#Source code: https://github.com/winycg/MTKD-RL
 import argparse
 import os
 import random
@@ -20,11 +21,12 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 
-from train_loops import train, test
+from train_loops import train_rl, test
 from torch.utils.tensorboard import SummaryWriter
 from models import model_dict
 from setting import  teacher_model_path_dict
 from dataset.cifar100 import get_cifar100_dataloaders
+from dataset.pcam import get_pcam_dataloaders
 from utils import set_logger
 from models.util import Regress, TransFeat
 
@@ -45,7 +47,7 @@ parser.add_argument('-b', '--batch-size', default=64, type=int,
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')  # 32*2
                          
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
@@ -87,14 +89,14 @@ parser.add_argument('--feat-weight', type=float, default=5, help='kd loss coeffi
 import models
 from utils import cal_param_size, cal_multi_adds, AverageMeter, adjust_lr, DistillKL, correct_num
 parser.add_argument('--milestones', default=[150,180,210], type=int, nargs='+', help='milestones for lr-multistep')
-parser.add_argument('--init-lr', default=0.05, type=float, help='learning rate')
+parser.add_argument('--init-lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--lr-type', default='multistep', type=str, help='learning rate strategy')
 parser.add_argument('--feat-kd', default='mse', type=str, help='feature kd loss')
 parser.add_argument('--kd-T', type=int, default=4, help='temperature')
 parser.add_argument('--agent-step', type=int, default=1000, help='agent optimization step')
 parser.add_argument('--checkpoint-dir', default='./checkpoint', type=str, help='checkpoint directory')
 parser.add_argument('--teacher-name-list', default=['resnet32x4', 'wrn_28_4'], type=str, nargs='+', help='teacher models')
-parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67'], help='dataset')
+parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'imagenet', 'tinyimagenet', 'dogs', 'cub_200_2011', 'mit67', 'pcam'], help='dataset')
 parser.add_argument('--trial', type=str, default='1', help='trial id')
 
 
@@ -172,7 +174,8 @@ def get_agent(teacher_models, args):
         feature, logits = t(x, is_feat=True)
         logits_dim += logits.size(1)
         feature_dim += feature[-1].size(1)
-        feature_dims.append(feature[-2].size())
+        if len(feature) > 1:
+            feature_dims.append(feature[-2].size())
         policy_input_size.append(feature[-1].size(1) + logits.size(1) + 3)
         
     agent = model_dict['PolicyTrans'](policy_input_size, teacher_num, args.dynamic).cuda()
@@ -226,6 +229,9 @@ def main_worker(gpu, ngpus_per_node, args):
     elif args.dataset.startswith('imagenet'):
         args.n_cls = 1000
         args.res = (1, 3, 224, 224)
+    elif args.dataset.startswith('pcam'):
+        args.n_cls = 2
+        args.res = (1, 3, 224, 224)
             
     teacher_models = load_teacher_list(args)
     
@@ -270,6 +276,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 agent = torch.nn.parallel.DistributedDataParallel(agent)  
                 
     elif args.gpu is not None and torch.cuda.is_available():
+        print("Use GPU: {} for training".format(args.gpu))
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
         agent = agent.cuda(args.gpu)
@@ -302,25 +309,28 @@ def main_worker(gpu, ngpus_per_node, args):
     trainable_list.append(feat_trans)
 
     optimizer = optim.SGD(trainable_list.parameters(),
-                        lr=0.1, momentum=0.9, weight_decay=args.weight_decay, nesterov=True)
-    agent_optimizer = optim.SGD(agent.parameters(), lr=0.1, )
+                        lr=0.001, momentum=0.9, weight_decay=args.weight_decay, nesterov=False)
+    agent_optimizer = optim.SGD(agent.parameters(), lr=0.001, )
 
     ################### load data ###################
-    train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
+    if args.dataset == 'cifar100':
+        train_loader, val_loader = get_cifar100_dataloaders(data_folder=args.data,
                                                         batch_size=args.batch_size,
                                                         num_workers=args.workers)
-    
+    elif args.dataset == 'pcam':
+        train_loader, val_loader = get_pcam_dataloaders(args.data, batch_size=args.batch_size, num_workers=args.workers)
     ################### train model ###################
     best_acc = 0.  # best test accuracy
     
-    t_results = []
-    for t_model in teacher_models:
-        acc = test(0, t_model, device, val_loader, criterion_ce, args, verbose=False)
-        t_results.append(round(acc, 2))
-    args.logger.info('Teacher accruacy: '+ str(t_results))
-
+    if False:
+        t_results = []
+        for (t_model, name) in zip(teacher_models, args.teacher_name_list):
+            acc = test(0, t_model, device, val_loader, criterion_ce, args, verbose=False, csv_filename=f'results_pcam_{name}_train.csv')
+            t_results.append(round(acc, 2))
+        args.logger.info('Teacher accruacy: '+ str(t_results))
+    
     for epoch in range(args.start_epoch, args.epochs) :
-        train(train_loader, model, criterion_list, optimizer, epoch, device, args, agent, feat_trans, teacher_models, agent_optimizer)
+        train_rl(train_loader, model, criterion_list, optimizer, epoch, device, args, agent, feat_trans, teacher_models, agent_optimizer)
         acc = test(epoch, model, device, val_loader, criterion_ce, args)
 
         if args.rank == 0 :

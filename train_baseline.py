@@ -13,6 +13,7 @@ import torch.backends.cudnn as cudnn
 
 from models import model_dict
 from dataset.cifar100 import get_cifar100_dataloaders
+from dataset.pcam import get_pcam_dataloaders
 from helper.util import save_dict_to_json, reduce_tensor, adjust_learning_rate_cifar
 from helper.loops import train_vanilla as train, validate
 from utils import set_logger
@@ -38,7 +39,7 @@ def parse_option():
 
     # dataset
     parser.add_argument('--model', type=str, default='resnet110')
-    parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100'], help='dataset')
+    parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'pcam'], help='dataset')
     parser.add_argument('--data-folder', type=str, default='/data/winycg/dataset', help='dataset path')
     parser.add_argument('--checkpoint-dir', type=str, default='/data/winycg/checkpoints/mkd_checkpoints/', help='checkpoint dir')
     
@@ -128,15 +129,16 @@ def main_worker(gpu, ngpus_per_node, opt):
     # model
     n_cls = {
         'cifar100': 100,
+        'pcam': 2,
     }.get(opt.dataset, None)
     
     model = model_dict[opt.model](num_classes=n_cls)
 
     # optimizer
-    optimizer = optim.SGD(model.parameters(),
-                          lr=opt.learning_rate,
-                          momentum=opt.momentum,
-                          weight_decay=opt.weight_decay)
+    optimizer = optim.AdamW(model.parameters(),
+                        lr=opt.learning_rate,
+                        weight_decay=opt.weight_decay,
+                        betas=(0.9, 0.999))
     criterion = nn.CrossEntropyLoss()
 
     if torch.cuda.is_available():
@@ -169,6 +171,8 @@ def main_worker(gpu, ngpus_per_node, opt):
     # dataloader
     if opt.dataset == 'cifar100':
         train_loader, val_loader = get_cifar100_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
+    elif opt.dataset == 'pcam':
+        train_loader, val_loader = get_pcam_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
     else:
         raise NotImplementedError(opt.dataset)
 

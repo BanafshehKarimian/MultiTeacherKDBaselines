@@ -167,17 +167,19 @@ class TransFeat(nn.Module):
         self.feat_t_list_size = feat_t_list_size
         for i in range(len(feat_t_list_size)):
             t_channel = feat_t_list_size[i][1]
-            setattr(self, 'embed'+str(i), Embed(s_channel, t_channel))
+            setattr(self, 'embed'+str(i), LinearEmbed(s_channel, t_channel))
 
     def forward(self, feat_s):
         trans_feat_s_list = []
-        s_H = feat_s.shape[2]
+        #s_H = feat_s.shape[2]
         for i, mid_feat_t in enumerate(self.feat_t_list_size):
-            t_H = mid_feat_t[2]
+            '''t_H = mid_feat_t[2]
             if s_H >= t_H:
                 feat_s = F.adaptive_avg_pool2d(feat_s, (t_H, t_H))
             else:
-                feat_s = F.interpolate(feat_s, size=(t_H, t_H), mode='bilinear')
+                if len(feat_s.shape)<4:
+                    feat_s = feat_s.unsqueeze(-1) 
+                feat_s = F.interpolate(feat_s, size=(t_H, t_H), mode='bilinear')'''
             trans_feat_s = getattr(self, 'embed'+str(i))(feat_s)
             trans_feat_s_list.append(trans_feat_s)
         return trans_feat_s_list

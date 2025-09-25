@@ -185,21 +185,20 @@ class DIST(nn.Module):
         return inter_loss, intra_loss
 
 
-def set_logger(filename, name='experiments'):
+def set_logger(filename, name='experiments', to_console=False):
     logger = logging.getLogger(name) 
-    logger.setLevel(level = logging.INFO)
+    logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d,%H:%M:%S')
-
 
     handler = logging.FileHandler(filename)
     handler.setLevel(logging.INFO)
-    handler.setFormatter(formatter) 
-
-    console = logging.StreamHandler() 
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
-
+    handler.setFormatter(formatter)
     logger.addHandler(handler)
-    logger.addHandler(console)
-    
+
+    if to_console:
+        console = logging.StreamHandler()
+        console.setLevel(logging.INFO)
+        console.setFormatter(formatter)
+        logger.addHandler(console)
+
     return logger

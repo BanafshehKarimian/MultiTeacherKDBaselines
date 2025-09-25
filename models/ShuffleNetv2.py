@@ -149,15 +149,15 @@ class ShuffleNetV2(nn.Module):
         # f3 = out
         out = F.relu(self.bn2(self.conv2(out)))
         f3 = out
-        out = F.avg_pool2d(out, 4)
+        out = F.adaptive_avg_pool2d(out, (1, 1))#out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         f4 = out
         out = self.linear(out)
         if is_feat:
             if preact:
-                return [f0, f1_pre, f2_pre, f3_pre, f4], out
+                return [f0, f1_pre, f2_pre, f4, f4], out
             else:
-                return [f0, f1, f2, f3, f4], out
+                return [f0, f1, f2, f4, f4], out
         else:
             return out
 
