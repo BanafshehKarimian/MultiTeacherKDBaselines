@@ -170,7 +170,7 @@ def train_distill_multi_teacher(epoch, train_loader, module_list, criterion_list
         data_time.update(time.time() - end)
         
         if opt.dali is None:
-            input, target = data
+            input, target = data[0], data[1]
         else:
             input, target = data[0]['data'], data[0]['label'].squeeze().long()
         input = input.float()
@@ -287,7 +287,7 @@ def train_distill_multi_teacher(epoch, train_loader, module_list, criterion_list
         elif opt.distill == 'inter': 
             mid_feat_t_list = [feat_t[-2] for feat_t in feat_t_list]
             trans_feat_s_list, output_feat_t_list = module_list[1](feat_s[-2], mid_feat_t_list, model_t_list)
-            loss_kd, weight = criterion_kd(trans_feat_s_list, mid_feat_t_list, output_feat_t_list, target)               
+            loss_kd, weight = criterion_kd(trans_feat_s_list, mid_feat_t_list, output_feat_t_list, target.to(torch.float))               
         else:
             raise NotImplementedError(opt.distill)
 
@@ -307,7 +307,7 @@ def train_distill_multi_teacher(epoch, train_loader, module_list, criterion_list
             loss = new_gamma * loss_cls + new_alpha * loss_div + new_beta * loss_kd
         acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
 
-        losses.update(loss.item(), input.size(0))
+        losses.update(loss.mean().item(), input.size(0))
         top1.update(acc1[0], input.size(0))
         top5.update(acc5[0], input.size(0))
 

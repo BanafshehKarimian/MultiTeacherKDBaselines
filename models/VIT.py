@@ -6,6 +6,24 @@ import timm
 
 __all__ = ['VIT']
 
+import torch.nn as nn
+
+class _CallForwardFeatures(nn.Module):
+    def __init__(self, vit):
+        super().__init__()
+        self.vit = vit
+    def forward(self, x):
+        return self.vit.forward_features(x)
+
+class _CallForwardHeadPrelogits(nn.Module):
+    def __init__(self, vit):
+        super().__init__()
+        self.vit = vit
+    def forward(self, x):
+        return self.vit.forward_head(x, pre_logits=True)
+
+def _identity(x):
+    return x
 
 class VIT(nn.Module):
     def __init__(self, num_classes, model, image_embed_size):
@@ -25,3 +43,10 @@ class VIT(nn.Module):
             return [f0[:, 1:, :].mean(dim=1), f1], out
         else:
             return out
+    
+    def distill_seq(self):
+        feat_m = nn.ModuleList([
+            _CallForwardFeatures(self.model),      # images -> pre-head features
+            _CallForwardHeadPrelogits(self.model)
+        ])
+        return feat_m

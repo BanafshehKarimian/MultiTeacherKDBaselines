@@ -31,7 +31,7 @@ def parse_option():
     parser.add_argument('--gpu_id', type=str, default='0', help='id(s) for CUDA_VISIBLE_DEVICES')
     
     # optimization
-    parser.add_argument('--learning_rate', type=float, default=0.005, help='learning rate')
+    parser.add_argument('--learning_rate', type=float, default=0.05, help='learning rate')
     parser.add_argument('--lr_decay_epochs', type=str, default='1,2,3', help='where to decay lr, can be a list')
     parser.add_argument('--lr_decay_rate', type=float, default=0.1, help='decay rate for learning rate')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay')
@@ -170,9 +170,9 @@ def main_worker(gpu, ngpus_per_node, opt):
 
     # dataloader
     if opt.dataset == 'cifar100':
-        train_loader, val_loader = get_cifar100_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
+        train_loader, val_loader, test_loader = get_cifar100_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
     elif opt.dataset == 'pcam':
-        train_loader, val_loader = get_pcam_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
+        train_loader, val_loader, test_loader = get_pcam_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
     else:
         raise NotImplementedError(opt.dataset)
 
@@ -228,6 +228,10 @@ def main_worker(gpu, ngpus_per_node, opt):
     if not opt.multiprocessing_distributed or opt.rank % ngpus_per_node == 0:
         # This best accuracy is only for printing purpose.
         opt.loggerx.info('best_accuracy {:.4f}'.format(best_acc))
+
+        checkpoint = torch.load(save_file, map_location=torch.device('cpu'))
+        model.load_state_dict(checkpoint['model'])
+        test_acc, test_acc_top5, test_loss = validate(val_loader, model, criterion, opt)
 
         # save parameters
         state = {k: v for k, v in opt._get_kwargs()}

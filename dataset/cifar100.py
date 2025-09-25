@@ -135,9 +135,9 @@ def get_cifar100_dataloaders(data_folder, batch_size=128, num_workers=8, is_inst
                              num_workers=num_workers)
 
     if is_instance:
-        return train_loader, test_loader, n_data
+        return train_loader, test_loader, test_loader, n_data
     else:
-        return train_loader, test_loader
+        return train_loader, test_loader, test_loader
 
 
 class CIFAR100InstanceSample(CIFAR100BackCompat):
@@ -251,4 +251,4 @@ def get_cifar100_dataloaders_sample(batch_size=128, num_workers=8, k=4096, mode=
                              shuffle=False,
                              num_workers=int(num_workers/2))
 
-    return train_loader, test_loader, n_data
+    return train_loader, test_loader, test_loader, n_data

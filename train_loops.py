@@ -109,8 +109,8 @@ def train_with_reward(train_loader, model, criterion_list, optimizer, epoch, dev
         optimizer.zero_grad()
         
         features, logits = model(inputs, is_feat=True) 
-        if len(features[-2].shape)>2:
-            features[-2] = features[-1]
+        '''if len(features[-2].shape)>2:
+            features[-2] = features[-1]'''
         trans_student_features = feat_trans(features[-2])
         
         teacher_logits = []
@@ -220,8 +220,8 @@ def train_avg(train_loader, model, criterion_list, optimizer, epoch, device,
         optimizer.zero_grad()
         
         features, logits = model(inputs, is_feat=True) 
-        if len(features[-2].shape)>2:
-            features[-2] = features[-1]
+        '''if len(features[-2].shape)>2:
+            features[-2] = features[-1]'''
         trans_student_features = feat_trans(features[-2])
         
         teacher_logits = []

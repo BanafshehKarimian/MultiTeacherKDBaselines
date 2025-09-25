@@ -3,8 +3,8 @@
 # ------------- teacher net --------------------#
 main_path = './chkpnt/teachers/models/'
 teacher_model_path_dict = {
-    'VITB16': main_path + 'VITB16_pcam_lr_0.001_decay_0.0005_trial_0/VITB16_best.pth',
-    'VITS16': main_path + 'VITS16_pcam_lr_0.001_decay_0.0005_trial_0/VITS16_best.pth',
+    'VITB16': main_path + 'VITB16_cifar100_lr_0.05_decay_0.0005_trial_0/VITB16_best.pth',
+    'VITS16': main_path + 'VITS16_cifar100_lr_0.05_decay_0.0005_trial_0/VITS16_best.pth',
     #'UNI': main_path + 'UNI_pcam_lr_0.001_decay_0.0005_trial_0/UNI_best.pth',
     #'DINOL14': main_path + 'DINOL14_pcam_lr_0.001_decay_0.0005_trial_0/DINOL14_best.pth',
     #'RegNetY_400MF': main_path + 'RegNetY_400MF_cifar100_lr_0.05_decay_0.0005_trial_0/RegNetY_400MF_best.pth',
