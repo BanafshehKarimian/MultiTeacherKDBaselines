@@ -95,7 +95,7 @@ def custom_collate(batch):
 
 checkpoint_path = '/export/livia/home/vision/Bkarimian/CONCH/checkpoints/conch/pytorch_model.bin'
 
-def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8):
+def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8, shuffle_train = True):
     """
     pcam
     """
@@ -120,7 +120,7 @@ def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8):
     train_set = CustomDataset(train_set, transform=train_transform)
     train_loader = DataLoader(train_set,
                               batch_size=batch_size,
-                              shuffle=True,
+                              shuffle=shuffle_train,
                               num_workers=num_workers, collate_fn=custom_collate)
 
     val_set = datasets.PCAM(
