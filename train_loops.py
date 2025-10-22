@@ -191,6 +191,126 @@ def train_with_reward(train_loader, model, criterion_list, optimizer, epoch, dev
                             train_loss_feat.avg,
                             acc1*100.))
 
+def train_FT(train_loader, model, criterion_list, optimizer, epoch, device, args):
+    
+    train_loss = AverageMeter('train_loss', ':.4e')
+
+    top1_num = 0
+    top5_num = 0
+    total = 0
+
+    lr = 0.0001#adjust_lr(optimizer, epoch, args)
+
+    start_time = time.time()
+    criterion_ce = criterion_list[0]
+    criterion_div = criterion_list[1]
+
+    model.train()
+    
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
+    for batch_idx, (inputs, targets) in enumerate(pbar):
+        batch_start_time = time.time()
+        inputs = inputs.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        
+        optimizer.zero_grad()
+        
+        features, logits = model(inputs, is_feat=True) 
+        
+
+        loss_cls = criterion_ce(logits, targets)
+        
+        
+        loss = loss_cls 
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        
+        train_loss.update(loss.item(), inputs.size(0))
+        
+        top1, top5 = correct_num(logits, targets, topk=(1, 1))
+        top1_num += top1
+        top5_num += top5
+        total += targets.size(0)
+
+        if args.rank == 0:
+            pbar.set_postfix({
+                'lr': f'{lr:.5f}',
+                'Dur': f'{(time.time()-batch_start_time):.2f}s',
+                'Top1': f'{(top1_num/total*100.).item():.2f}%'
+            })
+        
+            
+    acc1 = top1_num / total
+    acc5 = top5_num / total
+
+    if args.rank == 0:
+        args.logger.info('Epoch:{}\t lr:{:.4f}\t Duration:{:.3f}'
+                    '\n Train_loss:{:.5f}'
+                    '\nTrain top-1 accuracy:{:.2f}'
+                    .format(epoch, lr, time.time() - start_time,
+                            train_loss.avg,
+                            acc1*100.))
+
+def train_FTR(train_loader, model, reward_model, criterion_list, optimizer_student, optimizer_reward, epoch, device, args):
+    
+    train_loss = AverageMeter('train_loss', ':.4e')
+
+    top1_num = 0
+    top5_num = 0
+    total = 0
+
+    start_time = time.time()
+    criterion_ce = criterion_list[0]
+    criterion_div = criterion_list[1]
+
+    model.train()
+    
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch}")
+    for batch_idx, (inputs, items, targets) in enumerate(pbar):
+        batch_start_time = time.time()
+        inputs = inputs.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        
+        optimizer_student.zero_grad()
+        
+        features, logits = model(inputs, is_feat=True) 
+        
+
+        loss_cls = criterion_ce(logits, targets)
+        
+        
+        loss = loss_cls 
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer_student.step()
+        
+        train_loss.update(loss.item(), inputs.size(0))
+        
+        top1, top5 = correct_num(logits, targets, topk=(1, 1))
+        top1_num += top1
+        top5_num += top5
+        total += targets.size(0)
+
+        if args.rank == 0:
+            pbar.set_postfix({
+                'Dur': f'{(time.time()-batch_start_time):.2f}s',
+                'Top1': f'{(top1_num/total*100.).item():.2f}%'
+            })
+        
+            
+    acc1 = top1_num / total
+    acc5 = top5_num / total
+
+    if args.rank == 0:
+        args.logger.info('Epoch:{}\t Duration:{:.3f}'
+                    '\n Train_loss:{:.5f}'
+                    '\nTrain top-1 accuracy:{:.2f}'
+                    .format(epoch, time.time() - start_time,
+                            train_loss.avg,
+                            acc1*100.))
+
+
 def train_avg(train_loader, model, criterion_list, optimizer, epoch, device, 
           args, feat_trans, teacher_models):
     
@@ -485,7 +605,8 @@ def test(epoch, net, device, val_loader, criterion_ce, args, verbose=True, csv_f
     all_targets = []
 
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(pbar):
+        for batch_idx, batch in enumerate(pbar):
+            inputs, targets = batch[0], batch[-1]
             batch_start_time = time.time()
             inputs = inputs.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)

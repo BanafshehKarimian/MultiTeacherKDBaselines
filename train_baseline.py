@@ -11,7 +11,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
-from models import model_dict
+from models import model_dict, models_std, models_mean
 from dataset.cifar100 import get_cifar100_dataloaders
 from dataset.pcam import get_pcam_dataloaders
 from helper.util import save_dict_to_json, reduce_tensor, adjust_learning_rate_cifar
@@ -29,6 +29,7 @@ def parse_option():
     parser.add_argument('--num_workers', type=int, default=8, help='num of workers to use')
     parser.add_argument('--epochs', type=int, default=240, help='number of training epochs')
     parser.add_argument('--gpu_id', type=str, default='0', help='id(s) for CUDA_VISIBLE_DEVICES')
+    parser.add_argument('--save_epoch', type=int, nargs='+', default=[])
     
     # optimization
     parser.add_argument('--learning_rate', type=float, default=0.05, help='learning rate')
@@ -42,6 +43,7 @@ def parse_option():
     parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100', 'pcam'], help='dataset')
     parser.add_argument('--data-folder', type=str, default='/data/winycg/dataset', help='dataset path')
     parser.add_argument('--checkpoint-dir', type=str, default='/data/winycg/checkpoints/mkd_checkpoints/', help='checkpoint dir')
+    parser.add_argument('--subset_frac', type=float, default=1.0, help='subset percentage of the training data')
     
     parser.add_argument('-t', '--trial', type=str, default='0', help='the experiment id')
     parser.add_argument('--dali', type=str, choices=['cpu', 'gpu'], default=None)
@@ -172,7 +174,7 @@ def main_worker(gpu, ngpus_per_node, opt):
     if opt.dataset == 'cifar100':
         train_loader, val_loader, test_loader = get_cifar100_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
     elif opt.dataset == 'pcam':
-        train_loader, val_loader, test_loader = get_pcam_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers)
+        train_loader, val_loader, test_loader = get_pcam_dataloaders(opt.data_folder, batch_size=opt.batch_size, num_workers=opt.num_workers, subset_frac = opt.subset_frac, mean = models_mean[opt.model], std = models_std[opt.model])
     else:
         raise NotImplementedError(opt.dataset)
 
@@ -204,6 +206,16 @@ def main_worker(gpu, ngpus_per_node, opt):
         if not opt.multiprocessing_distributed or opt.rank % ngpus_per_node == 0:
             opt.loggerx.info(' ** Acc@1 {:.3f}, Acc@5 {:.3f}, test_loss {:.4f}'.format(test_acc, test_acc_top5, test_loss))
 
+            if epoch in opt.save_epoch:
+                state = {
+                    'epoch': epoch,
+                    'model': model.module.state_dict() if opt.multiprocessing_distributed else model.state_dict(),
+                    'test_acc': test_acc,
+                    'optimizer': optimizer.state_dict(),
+                }
+                save_file = os.path.join(opt.save_folder, '{}_epoch_{}.pth'.format(opt.model,str(epoch)))
+                
+                torch.save(state, save_file)
             # save the best model
             if test_acc > best_acc:
                 best_acc = test_acc

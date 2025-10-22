@@ -28,6 +28,25 @@ models_size = {
                 "RegNetX_400MF": 384,
             }
 
+
+models_std = {
+                "DINOL14": [0.229, 0.224, 0.225],
+                "vits16": [0.5, 0.5, 0.5],
+                "vits8": [0.5, 0.5, 0.5],
+                "vitb16": [0.5, 0.5, 0.5],
+                "vitb8": [0.5, 0.5, 0.5],
+                "UNI": [0.229, 0.224, 0.225],
+            }
+
+models_mean = {
+                "DINOL14": [0.485, 0.456, 0.406],
+                "vits16": [0.5, 0.5, 0.5],
+                "vits8": [0.5, 0.5, 0.5],
+                "vitb16": [0.5, 0.5, 0.5],
+                "vitb8": [0.5, 0.5, 0.5],
+                "UNI": [0.485, 0.456, 0.406],
+            }
+
 class ModelWrapper(nn.Module):
     def __init__(self, model, layer = "fc"):
         super().__init__()

@@ -2,12 +2,15 @@ from __future__ import print_function
 import torch
 import os
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
 from torch.utils.data import Dataset
 from torchvision.transforms import v2
+import itertools
+import random
+from dataset.Embedding_loader import EmbeddingLoader
 
 """
 mean = {
@@ -95,33 +98,65 @@ def custom_collate(batch):
 
 checkpoint_path = '/export/livia/home/vision/Bkarimian/CONCH/checkpoints/conch/pytorch_model.bin'
 
-def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8, shuffle_train = True):
+class RepeatDatasetR(Dataset):
+    def __init__(self, base_dataset, T: int, q: int):
+        self.base = base_dataset
+        items = list(range(T))
+        self.combos = list(itertools.combinations(items, q))
+        self.length = len(base_dataset)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+
+        base_idx = idx 
+        img  = self.base[base_idx][0]
+        label = self.base[base_idx][1]
+        combo_idx = random.choice(range(len(self.combos)))
+        return img, label, torch.tensor(self.combos[combo_idx])
+class RepeatDataset(Dataset):
+    def __init__(self, base_dataset, T: int, q: int):
+        self.base = base_dataset
+        items = list(range(T))
+        self.combos = list(itertools.combinations(items, q))
+        self.k = len(self.combos)
+        self.length = len(base_dataset) * self.k
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+
+        base_idx = idx // self.k
+        img  = self.base[base_idx][0]
+        label = self.base[base_idx][1]
+        combo_idx = idx % self.k
+        return img, label, torch.tensor(self.combos[combo_idx])
+    
+def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8, shuffle_train = True, subset_frac=1.0, no_norm = False, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225], return_dataset = False, teachers_cnt = None):
     """
     pcam
     """
-
-    train_transform = v2.Compose([
-                            v2.Resize(224),
-                            v2.CenterCrop(224),
-                            v2.ToTensor(),
-                            v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
-                        ])
-    test_transform =  v2.Compose([
-                            v2.Resize(224),
-                            v2.ToTensor(),
-                            v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet stats
-                        ])
+    train_transform = [v2.Resize(224), v2.ToTensor()]#, v2.CenterCrop(224)
+    test_transform = [ v2.Resize(224), v2.ToTensor(),]
+    if not no_norm:
+        train_transform.append(v2.Normalize(mean=mean, std=std))
+        test_transform.append(v2.Normalize(mean=mean, std=std))
+    train_transform = v2.Compose(train_transform)
+    test_transform =  v2.Compose(test_transform)
 
     train_set = datasets.PCAM(
                     root="/export/livia/home/vision/Bkarimian/RLMTKD/",
                     download=False,
-                    transform= None,
+                    transform= test_transform,
                 )
-    train_set = CustomDataset(train_set, transform=train_transform)
-    train_loader = DataLoader(train_set,
-                              batch_size=batch_size,
-                              shuffle=shuffle_train,
-                              num_workers=num_workers, collate_fn=custom_collate)
+    #train_set = CustomDataset(train_set, transform=train_transform)
+    if subset_frac < 1.0:
+        n = len(train_set)
+        k = max(1, int(round(subset_frac * n)))
+        subset_idx = np.random.choice(n, size=k, replace=False)
+        train_set = Subset(train_set, subset_idx)
 
     val_set = datasets.PCAM(
                     root="/export/livia/home/vision/Bkarimian/RLMTKD/",
@@ -129,10 +164,6 @@ def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8, shuffle_tra
                     transform=test_transform,
                     split = "val"
                 )
-    val_loader = DataLoader(val_set,
-                             batch_size=batch_size,
-                             shuffle=False,
-                             num_workers=num_workers)
     
     test_set = datasets.PCAM(
                     root="/export/livia/home/vision/Bkarimian/RLMTKD/",
@@ -140,7 +171,87 @@ def get_pcam_dataloaders(data_folder, batch_size=128, num_workers=8, shuffle_tra
                     transform=test_transform,
                     split = "test"
                 )
+    
+    if return_dataset:
+        if teachers_cnt:
+            return RepeatDatasetR(train_set, T = teachers_cnt, q = 2), RepeatDataset(val_set, T = teachers_cnt, q = 2), RepeatDataset(test_set, T = teachers_cnt, q = 2)
+        return train_set, val_set, test_set
+
+    train_loader = DataLoader(train_set,
+                              batch_size=batch_size,
+                              shuffle=shuffle_train,
+                              num_workers=num_workers)#, collate_fn=custom_collate
+    val_loader = DataLoader(val_set,
+                             batch_size=batch_size,
+                             shuffle=False,
+                             num_workers=num_workers)
     test_loader = DataLoader(test_set,
+                             batch_size=batch_size,
+                             shuffle=False,
+                             num_workers=num_workers)
+
+    return train_loader, val_loader, test_loader
+
+class AdditionalDataset(Dataset):
+    def __init__(self, base_dataset, embeddings, transform=None):
+        self.base_dataset = base_dataset
+        self.embeddings = embeddings
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.base_dataset)
+
+    def __getitem__(self, idx):
+        img, label = self.base_dataset[idx]
+        items, label_ = self.embeddings[idx]
+        assert label == label_
+        return img, items, label
+    
+def get_pcam_dataloaders_with_embedding(args, batch_size=128, num_workers=8, shuffle_train = True, subset_frac=1.0, no_norm = False, mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225], return_dataset = False, teachers_cnt = None):
+    """
+    pcam
+    """
+    train_transform = [v2.Resize(224), v2.ToTensor()]#, v2.CenterCrop(224)
+    test_transform = [ v2.Resize(224), v2.ToTensor(),]
+    if not no_norm:
+        train_transform.append(v2.Normalize(mean=mean, std=std))
+        test_transform.append(v2.Normalize(mean=mean, std=std))
+    train_transform = v2.Compose(train_transform)
+    test_transform =  v2.Compose(test_transform)
+
+    train_set = datasets.PCAM(
+                    root="/export/livia/home/vision/Bkarimian/RLMTKD/",
+                    download=False,
+                    transform= test_transform,
+                )
+    
+    val_set = datasets.PCAM(
+                    root="/export/livia/home/vision/Bkarimian/RLMTKD/",
+                    download=False,
+                    transform=test_transform,
+                    split = "val"
+                )
+    
+    test_set = datasets.PCAM(
+                    root="/export/livia/home/vision/Bkarimian/RLMTKD/",
+                    download=False,
+                    transform=test_transform,
+                    split = "test"
+                )
+    
+    train = EmbeddingLoader(teacher_names = args.teachers, base_path = args.base_dir, split = "train")
+    test = EmbeddingLoader(teacher_names = args.teachers, base_path = args.base_dir, split = "test")
+    val = EmbeddingLoader(teacher_names = args.teachers, base_path = args.base_dir, split = "val")
+    
+    train_loader = DataLoader(AdditionalDataset(train_set, train),
+                              batch_size=batch_size,
+                              shuffle=shuffle_train,
+                              num_workers=num_workers)
+    val_loader = DataLoader(AdditionalDataset(val_set, val),
+                             batch_size=batch_size,
+                             shuffle=False,
+                             num_workers=num_workers)
+    test_loader = DataLoader(AdditionalDataset(test_set, test),
                              batch_size=batch_size,
                              shuffle=False,
                              num_workers=num_workers)

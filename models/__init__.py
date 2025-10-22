@@ -14,14 +14,14 @@ from .VITS16 import VITS16
 from .VITB8 import VITB8
 from .VITB16 import VITB16
 from .VIT import VIT
-
+from .model_utils import models_mean, models_std, models_size
 model_dict = {
     'UNI': UNI,
     'DINOL14': DINOL14,
-    'VITS8': VITS8,
-    'VITS16': VITS16,
-    'VITB8': VITB8,
-    'VITB16': VITB16,
+    'vits8': VITS8,
+    'vits16': VITS16,
+    'vitb8': VITB8,
+    'vitb16': VITB16,
     'resnet8': resnet8,
     'resnet14': resnet14,
     'resnet20': resnet20,

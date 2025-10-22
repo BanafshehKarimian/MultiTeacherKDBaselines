@@ -21,74 +21,100 @@ import timm
 from torchmetrics.classification import BinaryAccuracy
 from torchmetrics.classification import MulticlassAccuracy
 from torch.optim.lr_scheduler import CosineAnnealingLR
-class RewardModel(nn.Module):
-    def __init__(self, teachers, embed_dim, embed_dims=[1024], scale_factor=5.0, device = 'cuda'):
-        super().__init__()
-        self.scale_factor = scale_factor
-        self.mappers = {dim:nn.Linear(dim, embed_dim) for dim in embed_dims}
-        self.device = device
-        self.teachers = teachers
-        for teacher in self.teachers:
-            teacher.eval()
-            teacher.to(self.device)
-            for param in teacher.parameters():
-                param.requires_grad = False
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import List, Sequence, Tuple
 
+class RewardModel(nn.Module):
+    """
+    Reward model with per-teacher linear mappers → shared embedding → scalar reward.
+    Expects each batch to provide a list of (embedding, logits) pairs (one per teacher)
+    and ground-truth labels for score extraction.
+    """
+    def __init__(
+        self,
+        embed_dim: int,
+        embed_dims: Sequence[int] = (1024,),
+        scale_factor: float = 5.0,
+        num_classes: int = 2,
+    ) -> None:
+        super().__init__()
+        self.embed_dims: List[int] = list(embed_dims)
+        self.scale_factor = scale_factor
+        self.num_classes = num_classes
+
+        # Register teacher mappers properly so optimizer sees them
+        self.mappers = nn.ModuleList([nn.Linear(d, embed_dim) for d in self.embed_dims])
+
+        # Keep your simple head (you can swap to a stronger head later)
         self.reward_head = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.GELU(),
             nn.Linear(embed_dim, embed_dim // 2),
-            nn.ReLU(),
+            nn.GELU(),
+            nn.Dropout(0.1),
             nn.Linear(embed_dim // 2, 1)
         )
-        self.reward_head.to(self.device)
-        print("model created")
 
+    # ---- Core ops ----
+    def mapp(self, x: torch.Tensor, teacher_idx: int) -> torch.Tensor:
+        """Map a teacher-specific embedding x → shared embed_dim."""
+        return self.mappers[teacher_idx](x)
 
-    def mapp(self, x):
-        self.mappers[x.shape[1]].to(self.device)
-        embedding = self.mappers[x.shape[1]](x.to(self.device))
-        return embedding
-    
-    def forward(self, embedding):
-        reward = self.reward_head(embedding)
-        return torch.tanh(reward.squeeze(-1) * self.scale_factor)
+    def forward(self, embedding: torch.Tensor) -> torch.Tensor:
+        """Return scaled tanh reward in [-tanh(scale), +tanh(scale)]. Shape: [B]."""
+        reward = self.reward_head(embedding)              # [B,1]
+        return reward.squeeze(-1)#torch.tanh( * self.scale_factor)
 
-    def compute_loss(self, rewards_chosen, rewards_rejected):
-        return -F.logsigmoid(rewards_chosen - rewards_rejected).mean()
+    # ---- Loss & scoring ----
+    '''@torch.no_grad()
+    def get_score(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        Extract the probability of the ground-truth class from logits.
+        logits: [B, C], labels: [B]
+        Returns: [B]
+        """
+        probs = F.softmax(logits, dim=-1)
+        return probs.gather(1, labels.view(-1, 1)).squeeze(1)'''
 
-    def get_embeddings(self, imgs, y, confidence = True):
-        emb = []
-        value = []
-        for (img, teacher) in zip(imgs, self.teachers):
-            with torch.no_grad():
-                k, v = teacher(img.to(self.device))
-            emb.append(self.mapp(k))
-            v = torch.softmax(v, axis = 1)
-            value.append([v[i][int(j.item())].item() for (i,j) in zip(range(len(v)), y)])
-        chosen = torch.zeros_like(emb[0])
-        rejected = torch.zeros_like(emb[0])
-        for i in range(len(value[0])):
-            best = np.argmax([value[0][i], value[1][i]])
-            chosen[i] = emb[best][i]
-            rejected[i] = emb[1-best][i]
-        return chosen, rejected
+    def compute_loss(self, scores: torch.Tensor, rewards: torch.Tensor) -> torch.Tensor:
+        perm = torch.argsort(scores, dim=1, descending=True)
+        r_sorted = rewards.gather(1, perm)
+        denom = torch.logcumsumexp(r_sorted.flip(1), dim=1).flip(1)
+        loss_per = (denom - r_sorted).sum(dim=1)
+        return loss_per.mean()
 
+    # ---- Batch API ----
+    def get_scores_and_rewards(
+        self,
+        pairs: List[Tuple[torch.Tensor, torch.Tensor]],  # list of (embd:[B,D_i], logits:[B,C])
+        labels: torch.Tensor,                            # [B]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        T = len(pairs)
+        scores_list, rewards_list = [], []
+        for i, (embd_i, logits_i, s_i) in enumerate(pairs):
+            r_i = self.forward(self.mapp(embd_i, i))     # [B]
+            scores_list.append(s_i)
+            rewards_list.append(r_i)
 
-    def process_batch(self, batch):
-        img = batch[0]#.to(self.device)
-        lab = batch[1].to(self.device)
-        chosen, rejected = self.get_embeddings(img, lab)
-        chosen = chosen.to(self.device)
-        rejected = rejected.to(self.device)
-        rewards_chosen = self.forward(chosen)
-        rewards_rejected = self.forward(rejected)
-        loss = self.compute_loss(rewards_chosen, rewards_rejected)
-        return rewards_chosen, rewards_rejected, loss
+        scores = torch.stack(scores_list, dim=1)         # [B, T]
+        rewards = torch.stack(rewards_list, dim=1)       # [B, T]
+        return scores, rewards
 
+    def process_batch(
+        self,
+        batch: Tuple[List[Tuple[torch.Tensor, torch.Tensor]], torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        pairs, labels = batch
+        scores, rewards = self.get_scores_and_rewards(pairs, labels)
+        loss = self.compute_loss(scores, rewards)
+        return scores, rewards, loss
 
 
 
 class PLRewardModel(pl.LightningModule):
-    def __init__(self, teachers, embed_dim, embed_dims = [1024], batch_size = 64, lr=0.001, momentum=0.9, nesterov = True, weight_decay = 0.0001, scheduler = False):
+    def __init__(self, embed_dim, embed_dims = [1024], batch_size = 64, lr=0.001, momentum=0.9, nesterov = True, weight_decay = 0.0001, scheduler = False):
         super().__init__()
 
         self.lr = lr
@@ -97,13 +123,10 @@ class PLRewardModel(pl.LightningModule):
         self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.scheduler = scheduler
-        self.rewards_chosen = []
-        self.rewards_rejected = []
-        self.model = RewardModel(teachers=teachers, embed_dim = embed_dim, embed_dims=embed_dims)
-        self.model.to(self.model.device)
+        self.model = RewardModel(embed_dim = embed_dim, embed_dims=embed_dims)
+        #self.model.to(self.model.device)
 
         print("model created")
-        print(self.device)
         
 
 
@@ -123,22 +146,16 @@ class PLRewardModel(pl.LightningModule):
         return self.model.process_batch(batch)
 
     def training_step(self, batch, batch_idx):
-        rewards_chosen, rewards_rejected, loss = self.process_batch(batch)
-        self.rewards_chosen.append(rewards_chosen)
-        self.rewards_rejected.append(rewards_rejected)
+        _, _, loss = self.process_batch(batch)
         self.log('train_loss', loss, batch_size=self.batch_size)        
         return loss
 
     def validation_step(self, batch, batch_idx):
-        rewards_chosen, rewards_rejected, loss = self.process_batch(batch)
-        self.rewards_chosen.append(rewards_chosen)
-        self.rewards_rejected.append(rewards_rejected)
+        _, _, loss = self.process_batch(batch)
         self.log('val_loss', loss, batch_size=self.batch_size)
 
     def test_step(self, batch, batch_idx):
-        rewards_chosen, rewards_rejected, loss = self.process_batch(batch)
-        self.rewards_chosen.append(rewards_chosen)
-        self.rewards_rejected.append(rewards_rejected)
+        _, _, loss = self.process_batch(batch)
         self.log('test_loss', loss, batch_size=self.batch_size)
 
 if __name__=="__main__":

@@ -1,0 +1,74 @@
+{
+  "os":  "Linux-6.8.0-84-generic-x86_64-with-glibc2.39",
+  "python":  "CPython 3.10.12",
+  "startedAt":  "2025-10-22T14:30:35.704887Z",
+  "args":  [
+    "--dataset",
+    "pcam",
+    "--wandb",
+    "--epoch",
+    "10",
+    "--lr",
+    "1e-5",
+    "--teachers",
+    "DINOL14",
+    "UNI",
+    "vitb16"
+  ],
+  "program":  "/export/livia/home/vision/Bkarimian/baseline/MTKD-RL/reward_learning.py",
+  "codePath":  "reward_learning.py",
+  "codePathLocal":  "reward_learning.py",
+  "git":  {
+    "remote":  "https://github.com/BanafshehKarimian/MultiTeacherKDBaselines.git",
+    "commit":  "714a3bca998c9d6700cc5f74c990ec94fd53c195"
+  },
+  "email":  "banafshe.karimian@gmail.com",
+  "root":  "/export/livia/home/vision/Bkarimian/baseline/MTKD-RL",
+  "host":  "bool1",
+  "executable":  "/export/livia/home/vision/Bkarimian/miniconda3/envs/mtkdrl/bin/python",
+  "cpu_count":  24,
+  "cpu_count_logical":  48,
+  "gpu":  "NVIDIA RTX A6000",
+  "gpu_count":  4,
+  "disk":  {
+    "/":  {
+      "total":  "501809635328",
+      "used":  "52540444672"
+    }
+  },
+  "memory":  {
+    "total":  "540653252608"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA RTX A6000",
+      "memoryTotal":  "51527024640",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-7fc59aed-6319-6266-1a99-95bc18694a1b"
+    },
+    {
+      "name":  "NVIDIA RTX A6000",
+      "memoryTotal":  "51527024640",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-996a1acd-1443-f14e-48c8-c25d6dc10397"
+    },
+    {
+      "name":  "NVIDIA RTX A6000",
+      "memoryTotal":  "51527024640",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-f0a755a4-e23c-9c9a-d628-2b00a5564c58"
+    },
+    {
+      "name":  "NVIDIA RTX A6000",
+      "memoryTotal":  "51527024640",
+      "cudaCores":  10752,
+      "architecture":  "Ampere",
+      "uuid":  "GPU-3cb0cece-6721-68c1-20c7-655111b751e2"
+    }
+  ],
+  "cudaVersion":  "12.4",
+  "writerId":  "gmn6c5wbc6enugal898zl5umh27g6n1h"
+}
